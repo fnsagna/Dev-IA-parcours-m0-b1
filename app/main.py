@@ -4,10 +4,24 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import time
+
 import joblib
+import pandas as pd
 from fastapi import FastAPI, HTTPException
+from loguru import logger
 
 from app.schemas import Booking, PredictionResponse
+
+logger.remove()
+logger.add(
+    "logs/api.log",
+    level="INFO",
+    rotation="5 MB",
+    retention="7 days",
+    compression="zip",
+    encoding="utf-8",
+)
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = Path(os.getenv("MODEL_PATH", ROOT_DIR / "model" / "cancellation_model.joblib"))
@@ -42,8 +56,21 @@ def health() -> dict:
 @app.post("/predict", response_model=PredictionResponse)
 def predict(booking: Booking) -> PredictionResponse:
     """Prédit l'annulation d'une réservation.
-
-    TODO 
-    
     """
-    raise HTTPException(status_code=501, detail="Route /predict pas encore implémentée")
+    start = time.perf_counter()
+
+    try:
+        model = state["model"]
+        df = pd.DataFrame([booking.model_dump()]) 
+        pred = model.predict(df)[0]
+        proba = model.predict_proba(df)[0, 1]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    duree_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "predict | entrée={} | annulation={} | proba={:.3f} | durée={:.1f}ms",
+        booking.model_dump(), bool(pred), float(proba), duree_ms,
+    )
+
+    return PredictionResponse(annulation=bool(pred), probabilite_annulation=float(proba))
