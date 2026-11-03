@@ -25,6 +25,7 @@ logger.add(
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = Path(os.getenv("MODEL_PATH", ROOT_DIR / "model" / "cancellation_model.joblib"))
+MODEL_INFO_PATH = ROOT_DIR / "model" / "model_info.json"
 
 # Objets partagés par toutes les requêtes (ici : le modèle)
 state: dict = {}
@@ -38,7 +39,6 @@ async def lifespan(app: FastAPI):
     # Exécuté à l'arrêt du serveur
     state.clear()
 
-
 app = FastAPI(
     title="Escale Atlantique — Prédiction d'annulation",
     description="Estime la probabilité qu'une réservation soit annulée.",
@@ -46,11 +46,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
 @app.get("/health")
 def health() -> dict:
     """Le service est-il en vie, et le modèle chargé ?"""
     return {"status": "ok", "model_loaded": "model" in state}
+
+@app.get("/info")
+def info() -> dict:
+    """Nom du modèle, date d'entraînement et colonnes attendues."""
+    import json
+    data = json.loads(MODEL_INFO_PATH.read_text(encoding="utf-8"))
+    return {
+        "model_name": data["model_name"],
+        "trained_on": data["trained_on"],
+        "features": data["features"],
+    }
 
 
 @app.post("/predict", response_model=PredictionResponse)
@@ -74,3 +84,14 @@ def predict(booking: Booking) -> PredictionResponse:
     )
 
     return PredictionResponse(annulation=bool(pred), probabilite_annulation=float(proba))
+
+@app.post("/predict/batch", response_model=list[PredictionResponse])
+def predict_batch(bookings: list[Booking]) -> list[PredictionResponse]:
+    df = pd.DataFrame([b.model_dump() for b in bookings])
+    model = state["model"]
+    preds = model.predict(df)
+    probas = model.predict_proba(df)[:, 1]
+    return [
+        PredictionResponse(annulation=bool(p), probabilite_annulation=float(pr))
+        for p, pr in zip(preds, probas)
+    ]
