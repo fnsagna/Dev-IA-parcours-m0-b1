@@ -43,6 +43,27 @@ uvicorn app.main:app --reload
 pytest -v
 ```
 
+## Lancement avec Docker
+
+```bash
+docker build -t fastia-annulation:dev .
+docker run --rm -p 8000:8000 fastia-annulation:dev
+```
+#### Exemple d'appel à /predict : Vérifier depuis votre machine (hors conteneur)
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @data/exemple_reservation.json
+``` 
+####  Réponse attendue :
+
+{"annulation": false, "probabilite_annulation": 0.12}
+
+
+vérifiez d'abord que `data/exemple_reservation.json` correspond bien au schéma `Booking` — sinon adaptez l'exemple
+
+
 ## Données
 
 Extrait de *Hotel Booking Demand* — N. Antonio, A. de Almeida, L. Nunes (2019), *Data in Brief* 22, 41-49. Licence CC BY 4.0.
